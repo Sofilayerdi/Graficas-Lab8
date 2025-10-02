@@ -9,8 +9,8 @@ from lights import *
 from material import REFLECTIVE, OPAQUE, TRANSPARENT, Material
 from BMPTexture import BMPTexture
 
-width = 550
-height = 550
+width = 500
+height = 500
 
 screen = pygame.display.set_mode((width, height), pygame.SCALED)
 clock = pygame.time.Clock()
