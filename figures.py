@@ -291,44 +291,117 @@ class Cilindro(Shape):
         dir = np.array(dir)
         pos = np.array(self.position)
 
+        minY = pos[1] - self.height / 2
+        maxY = pos[1] + self.height / 2
+
         dxz = np.array([dir[0], 0, dir[2]])
         oxz = np.array([orig[0], 0, orig[2]])
         cxz = np.array([pos[0], 0, pos[2]])
 
         L = oxz - cxz
         a = np.dot(dxz, dxz)
-        b = 2 * np.dot(dxz, L)
-        c = np.dot(L, L) - self.radius ** 2
+        
+        intercept = None
+        
+        if a > 1e-10:
+            b = 2 * np.dot(dxz, L)
+            c = np.dot(L, L) - self.radius ** 2
 
-        discriminant = b * b - 4 * a * c
-        if discriminant < 0:
+            discriminant = b * b - 4 * a * c
+            
+            if discriminant >= 0:
+                sqrt_disc = np.sqrt(discriminant)
+                t0 = (-b - sqrt_disc) / (2 * a)
+                t1 = (-b + sqrt_disc) / (2 * a)
+
+                for t in [t0, t1]:
+                    if t > 1e-6:
+                        P = orig + dir * t
+                        if minY <= P[1] <= maxY:
+                            if intercept is None or t < intercept.distance:
+                                normal = P - pos
+                                normal[1] = 0
+                                normal = normal / np.linalg.norm(normal)
+                                intercept = Intercept(point=P,
+                                                             normal=normal,
+                                                             distance=t,
+                                                             texCoords=None,
+                                                             rayDirection=dir,
+                                                             obj=self)
+                                
+
+        bottom_intercept = self.bottom_disk.ray_intersect(orig, dir)
+        if bottom_intercept is not None:
+            if intercept is None or bottom_intercept.distance < intercept.distance:
+                intercept = bottom_intercept
+                intercept.obj = self
+
+        top_intercept = self.top_disk.ray_intersect(orig, dir)
+        if top_intercept is not None:
+            if intercept is None or top_intercept.distance < intercept.distance:
+                intercept = top_intercept
+                intercept.obj = self
+
+        return intercept
+    
+class Elipsoide(Shape):
+    def __init__(self, position, radius, material):
+        super().__init__(position, material)
+        self.radius = np.array(radius)
+        self.type = "Elipsoide"
+
+    def ray_intersect(self, orig, dir):
+        orig = np.array(orig)
+        dir = np.array(dir)
+        pos = np.array(self.position)
+
+        O = orig - pos  
+        D = dir        
+        a, b, c = self.radius
+
+        A = (D[0] * D[0]) / (a * a) + (D[1] * D[1]) / (b * b) + (D[2] * D[2]) / (c * c)
+        B = 2.0 * ( (O[0] * D[0]) / (a * a) + (O[1] * D[1]) / (b * b) + (O[2] * D[2]) / (c * c) )
+        C = (O[0] * O[0]) / (a * a) + (O[1] * O[1]) / (b * b) + (O[2] * O[2]) / (c * c) - 1.0
+
+        eps = 1e-12
+        if abs(A) < eps:
             return None
 
-        sqrt_disc = np.sqrt(discriminant)
-        t0 = (-b - sqrt_disc) / (2 * a)
-        t1 = (-b + sqrt_disc) / (2 * a)
+        discr = B * B - 4.0 * A * C
+        if discr < 0:
+            return None
 
-        t = t0 if t0 > 1e-6 else t1
-        if t < 1e-6:
+        sqrt_disc = np.sqrt(discr)
+        t0 = (-B - sqrt_disc) / (2.0 * A)
+        t1 = (-B + sqrt_disc) / (2.0 * A)
+
+        t = None
+        if t0 > 1e-6 and t1 > 1e-6:
+            t = min(t0, t1)
+        elif t0 > 1e-6:
+            t = t0
+        elif t1 > 1e-6:
+            t = t1
+        else:
             return None
 
         P = orig + dir * t
-        minY = pos[1] - self.height / 2
-        maxY = pos[1] + self.height / 2
+        Pr = P - pos
+        x, y, z = Pr
 
-        if P[1] < minY or P[1] > maxY:
+        normal = np.array([2.0 * x / (a * a),
+                           2.0 * y / (b * b),
+                           2.0 * z / (c * c)])
+        norm_len = np.linalg.norm(normal)
+        if norm_len == 0:
             return None
+        normal /= norm_len
 
-        normal = P - pos
-        normal[1] = 0
-        normal = normal / np.linalg.norm(normal)
-
-        u = -atan2(normal[2], normal[0]) / (2 * pi) + 0.5
-        v = (P[1] - minY) / self.height
 
         return Intercept(point=P,
-                        normal=normal,
-                        distance=t,
-                        texCoords=[u, v],
-                        rayDirection=dir,
-                        obj=self)
+                         normal=normal,
+                         distance=t,
+                         texCoords=None,
+                         rayDirection=dir,
+                         obj=self)
+    
